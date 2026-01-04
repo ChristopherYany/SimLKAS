@@ -27,22 +27,34 @@ def apply_weather_preset(world, preset_name: str):
     if not preset_values:
         print(f"Preset '{preset_name}' not found.")
         return
+    
+    fields = preset_values[:10]     # 只保留 CARLA 0.9.11 支持的参数
 
     weather = carla.WeatherParameters(
-        cloudiness=preset_values[0],
-        precipitation=preset_values[1],
-        precipitation_deposits=preset_values[2],
-        wind_intensity=preset_values[3],
-        sun_azimuth_angle=preset_values[4],
-        sun_altitude_angle=preset_values[5],
-        fog_density=preset_values[6],
-        fog_distance=preset_values[7],
-        fog_falloff=preset_values[8],
-        wetness=preset_values[9],
-        scattering_intensity=preset_values[10],
-        mie_scattering_scale=preset_values[11],
-        rayleigh_scattering_scale=preset_values[12],
-        dust_storm=preset_values[13]
+        cloudiness=fields[0],
+        precipitation=fields[1],
+        precipitation_deposits=fields[2],
+        wind_intensity=fields[3],
+        sun_azimuth_angle=fields[4],
+        sun_altitude_angle=fields[5],
+        fog_density=fields[6],
+        fog_distance=fields[7],
+        fog_falloff=fields[8],
+        wetness=fields[9],
+        # cloudiness=preset_values[0],              #只保留 CARLA 0.9.11 支持的参数
+        # precipitation=preset_values[1],           #其他的参数要求≥0.9.13
+        # precipitation_deposits=preset_values[2],
+        # wind_intensity=preset_values[3],
+        # sun_azimuth_angle=preset_values[4],
+        # sun_altitude_angle=preset_values[5],
+        # fog_density=preset_values[6],
+        # fog_distance=preset_values[7],
+        # fog_falloff=preset_values[8],
+        # wetness=preset_values[9],
+        # scattering_intensity=preset_values[10],
+        # mie_scattering_scale=preset_values[11],
+        # rayleigh_scattering_scale=preset_values[12],
+        # dust_storm=preset_values[13]
     )
     world.set_weather(weather)
 
