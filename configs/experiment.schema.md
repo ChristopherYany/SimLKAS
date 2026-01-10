@@ -29,6 +29,12 @@ This document describes each field in `configs/experiment.json`, what it control
 
 - `lkas`: Lane keeping stack settings.
   - `detector`: `"legacy"` or `"lanenet"`.
+  - `fusion`: LKS fusion EKF settings (vision + IMU + GNSS). Defaults live in `modules/fusion/lks_fusion.py`.
+    - `enabled`: `true` (turn fusion on/off).
+    - `enable_adaptive`: `true` (adaptive lane measurement covariance).
+    - `enable_nis_gate`: `true` (innovation gate for lane updates).
+    - `enable_output_smoothing`: `true` (low-pass output smoothing).
+    - `use_gnss_speed`: `true` (use GNSS-derived speed updates).
 
 - `display`: Visualization settings.
   - `show_hud`: `true`/`false`; when `false`, HUD is not constructed or updated.

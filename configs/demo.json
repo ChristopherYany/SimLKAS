@@ -14,7 +14,14 @@
     "vehicle_light": null
   },
   "lkas": {
-    "detector": "legacy"
+    "detector": "legacy",
+    "fusion": {
+      "enabled": true,
+      "enable_adaptive": true,
+      "enable_nis_gate": true,
+      "enable_output_smoothing": true,
+      "use_gnss_speed": true
+    }
   },
   "display": {
     "show_hud": true

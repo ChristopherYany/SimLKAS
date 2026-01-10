@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 from pathlib import Path
 import carla
 import numpy as np
@@ -14,18 +13,6 @@ from modules.utils import record_vehicle_data, save_to_csv, render_lane_overlay
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEATHER_PRESETS_PATH = REPO_ROOT / "configs" / "weather_presets.json"
-FUSION_DIR = REPO_ROOT / "modules" / "fusion"
-
-
-def _load_fusion_classes():
-    if str(FUSION_DIR) not in sys.path:
-        sys.path.append(str(FUSION_DIR))
-    try:
-        from lks_fusion import LaneFusionEKF, FusionConfig  # type: ignore
-    except Exception as exc:
-        print(f"Fusion module unavailable, falling back to raw lane params: {exc}")
-        return None, None
-    return LaneFusionEKF, FusionConfig
 
 
 def apply_weather_preset(world, preset_name: str):
@@ -109,7 +96,7 @@ def run_single_simulation(config: dict, seed=None):
     logging_enabled = logging_cfg.get("enabled", True)
 
     actor_list = []
-    latest_frame = {"frame": None, "timestamp": None}
+    latest_frame = {"frame": None}
 
     if seed is not None:
         np.random.seed(seed)
@@ -118,7 +105,6 @@ def run_single_simulation(config: dict, seed=None):
         frame_np = np.frombuffer(image.raw_data, dtype=np.uint8).reshape((image.height, image.width, 4))
         rgb_image = cv2.cvtColor(frame_np, cv2.COLOR_BGRA2BGR)
         latest_frame["frame"] = rgb_image
-        latest_frame["timestamp"] = image.timestamp
 
     client = carla.Client('localhost', 2000)
     client.set_timeout(5.0)
@@ -168,60 +154,6 @@ def run_single_simulation(config: dict, seed=None):
 
     detector = build_detector(detector_name)
     controller = VehicleController(vehicle, method='pid')
-
-    fusion_cfg = lkas_cfg.get("fusion", {})
-    fusion_enabled = fusion_cfg.get("enabled", True)
-    fusion = None
-    fusion_mode = "Fusion disabled: raw Vision"
-
-    if fusion_enabled:
-        LaneFusionEKF, FusionConfig = _load_fusion_classes()
-        if LaneFusionEKF is None:
-            fusion_enabled = False
-        else:
-            fusion = LaneFusionEKF(FusionConfig.from_dict(fusion_cfg))
-            fusion.set_target_speed_kph(target_speed)
-            use_gnss_speed = fusion_cfg.get("use_gnss_speed", True)
-            fusion_mode = "Fusion enabled: Vision+IMU+GNSS" if use_gnss_speed else "Fusion enabled: Vision+IMU"
-
-            imu_bp = world.get_blueprint_library().find('sensor.other.imu')
-            imu_tick = fusion_cfg.get("imu_tick", 0.01)
-            imu_bp.set_attribute("sensor_tick", str(imu_tick))
-            imu_transform = carla.Transform(carla.Location(x=0.0, z=0.0))
-            imu_sensor = world.spawn_actor(imu_bp, imu_transform, attach_to=vehicle)
-            actor_list.append(imu_sensor)
-
-            gnss_bp = world.get_blueprint_library().find('sensor.other.gnss')
-            gnss_tick = fusion_cfg.get("gnss_tick", 0.1)
-            gnss_bp.set_attribute("sensor_tick", str(gnss_tick))
-            gnss_transform = carla.Transform(carla.Location(x=0.0, z=0.0))
-            gnss_sensor = world.spawn_actor(gnss_bp, gnss_transform, attach_to=vehicle)
-            actor_list.append(gnss_sensor)
-
-            def imu_callback(imu_data):
-                accel = np.array([
-                    imu_data.accelerometer.x,
-                    imu_data.accelerometer.y,
-                    imu_data.accelerometer.z
-                ], dtype=float)
-                gyro = np.array([
-                    imu_data.gyroscope.x,
-                    imu_data.gyroscope.y,
-                    imu_data.gyroscope.z
-                ], dtype=float)
-                fusion.push_imu(imu_data.timestamp, accel, gyro)
-
-            def gnss_callback(gnss_data):
-                fusion.push_gnss(
-                    gnss_data.timestamp,
-                    gnss_data.latitude,
-                    gnss_data.longitude,
-                    gnss_data.altitude
-                )
-
-            imu_sensor.listen(imu_callback)
-            gnss_sensor.listen(gnss_callback)
-    print(fusion_mode)
     vehicle_hud = VehicleHUD(vehicle, camera_view='third_person', video_file='veh_sim.mp4') if show_hud else None
 
     trajectory_data = []
@@ -259,32 +191,17 @@ def run_single_simulation(config: dict, seed=None):
                 print(f"Total of {total_distance_traveled / 1000:.2f} km traveled")
                 break
 
-            snapshot = world.get_snapshot()
-            sim_time = snapshot.timestamp.elapsed_seconds
             frame = latest_frame["frame"]
-            frame_time = latest_frame["timestamp"]
             if frame is not None:
                 line_parameters = detector.detect_lane(frame)
-                if fusion is not None:
-                    if frame_time is None:
-                        frame_time = sim_time
-                    fusion.push_lane(frame_time, line_parameters, target_speed)
-                    fusion.advance(sim_time)
-                    fused_lane = fusion.get_lane_params()
-                    lane_params = fused_lane if fused_lane is not None else line_parameters
-                else:
-                    lane_params = line_parameters
-                control = controller.run_step(target_speed, lane_params)
+                control = controller.run_step(target_speed, line_parameters)
                 vehicle.apply_control(control)
 
                 if vehicle_hud:
-                    overlay_frame = render_lane_overlay(frame, lane_params)
+                    overlay_frame = render_lane_overlay(frame, line_parameters)
                     vehicle_hud.update_lane_overlay(overlay_frame)
             elif vehicle_hud:
                 vehicle_hud.update_lane_overlay(None)
-
-            if fusion is not None and frame is None:
-                fusion.advance(sim_time)
 
             if vehicle_hud:
                 vehicle_hud.update()
